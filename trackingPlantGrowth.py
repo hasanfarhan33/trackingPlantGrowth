@@ -7,6 +7,7 @@ import os
 import pandas as pd 
 from glob import glob
 import time 
+import numpy as np 
 
 def debugging_shit(): 
     img_path = r"plant_images/cropped_images/UGAN01_1.jpg"
@@ -81,7 +82,8 @@ def getting_pixel_counts(img_path, show_images = False):
     if img is None: 
         sys.exit("Could not read image")
     
-    resized_img = ResizeWithAspectRatio(img, width = 500)
+    resized_img_og = ResizeWithAspectRatio(img, width = 500)
+    resized_img = cv.resize(img, (500, 500), interpolation= cv.INTER_LINEAR)
     
     # Converting the image to HSV 
     hsv_img = cv.cvtColor(resized_img, cv.COLOR_BGR2HSV)
@@ -90,6 +92,8 @@ def getting_pixel_counts(img_path, show_images = False):
     mask = cv.inRange(hsv_img, (40, 100, 20), (80, 255, 255))
     
     if show_images: 
+        cv.imshow("Original Image", img)
+        cv.imshow("Normal IMage", resized_img_og)
         cv.imshow("Resized Image", resized_img)
         cv.imshow("White Pixels", mask)
         
@@ -160,6 +164,65 @@ def generate_excel_file(folder_path, file_name):
 img_folder = r"plant_images/cropped_images"
 
 
-start_time = time.time()
-generate_excel_file(img_folder, "generate_file")
-print("TIME TAKEN TO GENERATE EXCEL FILE:", int(time.time() - start_time), "seconds")
+# start_time = time.time()
+# generate_excel_file(img_folder, "generate_file")
+# print("TIME TAKEN TO GENERATE EXCEL FILE:", int(time.time() - start_time), "seconds")
+
+# Getting pixel counts 
+# white_pixel_count, total_pixels = getting_pixel_counts(img_path = r"plant_images/image.jpg", show_images = True)
+# print(white_pixel_count, total_pixels)
+
+# Detecting squares 
+# Load image, grayscale, median blur, sharpen image 
+loaded_image = cv.imread(r"plant_images/cropped_images/UGAN01_1.jpg")
+# cv.imshow("NON RESIZED", loaded_image)
+loaded_image = ResizeWithAspectRatio(loaded_image, width = 500)
+# cv.imshow("RESIZED", loaded_image)
+gray = cv.cvtColor(loaded_image, cv.COLOR_BGR2GRAY)
+blur = cv.medianBlur(gray, 9)
+sharpen_kernel = np.array([[-1,-1,-1], [-1,9,-1],[-1,-1,-1]])
+sharpen = cv.filter2D(blur, -1, sharpen_kernel)
+
+# Getting pixel values 
+# for i in range(sharpen.shape[0]):
+#     for j in range(sharpen.shape[1]): 
+#         print(sharpen[i][j])
+
+# Threshold and morph close 
+thresh = cv.threshold(sharpen, 160, 255, cv.THRESH_OTSU)[1] 
+kernel = cv.getStructuringElement(cv.MORPH_RECT, (3, 3))
+close = cv.morphologyEx(thresh, cv.MORPH_CLOSE, kernel, iterations = 1)
+
+# Find contours and filter using threshold area 
+cnts = cv.findContours(close, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+cnts = cnts[0] if len(cnts) == 2 else cnts[1]  
+
+# Printing the total area of the image 
+print(loaded_image.size)
+
+min_area = 5_000
+max_area = 10_000  
+image_number = 0
+
+for c in cnts: 
+    area = cv.contourArea(c)
+    print(area)
+    if area > min_area and area < max_area: 
+        x, y, w, h = cv.boundingRect(c)
+        ROI = loaded_image[y:y+h, x:x+w]
+        cv.imwrite("ROI_{}.png".format(image_number), ROI)
+        cv.rectangle(loaded_image, (x, y), (x + w, y + h), (36, 255, 12), 2)
+        image_number += 1
+
+cv.imshow('gray', gray)
+cv.imshow('blur', blur)
+cv.imshow('sharpen', sharpen)
+cv.imshow('close', close)
+cv.imshow('thresh', thresh)
+cv.imshow('image', loaded_image)
+
+
+k = cv.waitKey(0)
+if k == 27:
+    cv.destroyAllWindows() 
+    print("The program has been terminated!")
