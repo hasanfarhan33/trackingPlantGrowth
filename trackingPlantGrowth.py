@@ -222,6 +222,8 @@ if __name__ == "__main__":
     # white_pixel_count, total_pixels = getting_pixel_counts(img_path = r"plant_images/image.jpg", show_images = True)
     # print(white_pixel_count, total_pixels)
 
+    # IGNORE THIS - IT IS A MULTILINE COMMENT! 
+    '''
     # Detecting squares 
     # Load image, grayscale, median blur, sharpen image 
     # loaded_image = cv.imread(r"plant_images/cropped_images/UGAN01_1.jpg")
@@ -271,7 +273,7 @@ if __name__ == "__main__":
     # cv.imshow('close', close)
     # cv.imshow('thresh', thresh)
     # cv.imshow('image', loaded_image)
-
+    '''
 
     k = cv.waitKey(0)
     if k == 27:
