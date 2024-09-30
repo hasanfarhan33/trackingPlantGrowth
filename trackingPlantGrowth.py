@@ -8,6 +8,7 @@ import pandas as pd
 from glob import glob
 import time 
 import numpy as np 
+from pathlib import Path 
 
 def debugging_shit(): 
     img_path = r"plant_images/cropped_images/UGAN01_1.jpg"
@@ -161,68 +162,118 @@ def generate_excel_file(folder_path, file_name):
     workbook.close()
     print("THE EXCEL FILE HAS BEEN GENERATED")
 
-img_folder = r"plant_images/cropped_images"
+
+def get_squares_from_all_photos(folder_path, file_name = None):
+    image_files = glob(os.path.join(folder_path, "*.jpg"))
+    squares_folder = "extracted_squares"
+    for cur_img in image_files: 
+        cur_file = os.path.basename(cur_img)
+        # print(Path(cur_file).stem)
+        
+        # Load image, grayscale, median blur, sharpen
+        loaded_img = cv.imread(os.path.join(folder_path, cur_file))
+        resized_img = ResizeWithAspectRatio(loaded_img, 500)
+        gray = cv.cvtColor(resized_img, cv.COLOR_BGR2GRAY)
+        blur = cv.medianBlur(gray, 9)
+        sharpen_kernel = np.array([[-1,-1,-1],[-1,9,-1],[-1,-1,-1]])
+        sharpen = cv.filter2D(blur, -1, sharpen_kernel)
+        
+        # Threshold, and morph close 
+        thresh = cv.threshold(sharpen, 160, 255, cv.THRESH_OTSU)[1] 
+        kernel = cv.getStructuringElement(cv.MORPH_RECT, (3, 3))
+        close = cv.morphologyEx(thresh, cv.MORPH_CLOSE, kernel, iterations = 1)
+        
+        # Find contours and filter using threshold area 
+        cnts = cv.findContours(close, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+        cnts = cnts[0] if len(cnts) == 2 else cnts[1]  
+        
+        min_area = 5_000 
+        max_area = 10_000 
+        
+        for c in cnts: 
+            area = cv.contourArea(c)
+            # print(area)
+            if area > min_area and area < max_area: 
+                x, y, w, h = cv.boundingRect(c)
+                ROI = resized_img[y:y+h, x:x+w] 
+            
+                # Creating a folder and saving all the extracted rectangles there 
+                if not os.path.exists(squares_folder):
+                    os.makedirs(squares_folder)
+                else: 
+                    square_file_name = Path(cur_file).stem
+                    cv.imwrite(os.path.join(squares_folder, "{}_square.png".format(square_file_name)), ROI)
+                break 
+                    
+        # break 
 
 
-# start_time = time.time()
-# generate_excel_file(img_folder, "generate_file")
-# print("TIME TAKEN TO GENERATE EXCEL FILE:", int(time.time() - start_time), "seconds")
+if __name__ == "__main__":
+    # Folder where all the plant images are 
+    img_folder = r"plant_images/cropped_images"
+    
+    get_squares_from_all_photos(img_folder)
+    
+    # start_time = time.time()
+    # generate_excel_file(img_folder, "generate_file")
+    # print("TIME TAKEN TO GENERATE EXCEL FILE:", int(time.time() - start_time), "seconds")
 
-# Getting pixel counts 
-# white_pixel_count, total_pixels = getting_pixel_counts(img_path = r"plant_images/image.jpg", show_images = True)
-# print(white_pixel_count, total_pixels)
+    # Getting pixel counts 
+    # white_pixel_count, total_pixels = getting_pixel_counts(img_path = r"plant_images/image.jpg", show_images = True)
+    # print(white_pixel_count, total_pixels)
 
-# Detecting squares 
-# Load image, grayscale, median blur, sharpen image 
-loaded_image = cv.imread(r"plant_images/cropped_images/UGAN01_1.jpg")
-# cv.imshow("NON RESIZED", loaded_image)
-loaded_image = ResizeWithAspectRatio(loaded_image, width = 500)
-# cv.imshow("RESIZED", loaded_image)
-gray = cv.cvtColor(loaded_image, cv.COLOR_BGR2GRAY)
-blur = cv.medianBlur(gray, 9)
-sharpen_kernel = np.array([[-1,-1,-1], [-1,9,-1],[-1,-1,-1]])
-sharpen = cv.filter2D(blur, -1, sharpen_kernel)
+    # Detecting squares 
+    # Load image, grayscale, median blur, sharpen image 
+    # loaded_image = cv.imread(r"plant_images/cropped_images/UGAN01_1.jpg")
+    # cv.imshow("NON RESIZED", loaded_image)
+    # loaded_image = ResizeWithAspectRatio(loaded_image, width = 500)
+    # cv.imshow("RESIZED", loaded_image)
+    # gray = cv.cvtColor(loaded_image, cv.COLOR_BGR2GRAY)
+    # blur = cv.medianBlur(gray, 9)
+    # sharpen_kernel = np.array([[-1,-1,-1], [-1,9,-1],[-1,-1,-1]])
+    # sharpen = cv.filter2D(blur, -1, sharpen_kernel)
 
-# Getting pixel values 
-# for i in range(sharpen.shape[0]):
-#     for j in range(sharpen.shape[1]): 
-#         print(sharpen[i][j])
+    # Getting pixel values 
+    # for i in range(sharpen.shape[0]):
+        # for j in range(sharpen.shape[1]): 
+    #         print(sharpen[i][j])
 
-# Threshold and morph close 
-thresh = cv.threshold(sharpen, 160, 255, cv.THRESH_OTSU)[1] 
-kernel = cv.getStructuringElement(cv.MORPH_RECT, (3, 3))
-close = cv.morphologyEx(thresh, cv.MORPH_CLOSE, kernel, iterations = 1)
+    # Threshold and morph close 
+    # thresh = cv.threshold(sharpen, 160, 255, cv.THRESH_OTSU)[1] 
+    # kernel = cv.getStructuringElement(cv.MORPH_RECT, (3, 3))
+    # close = cv.morphologyEx(thresh, cv.MORPH_CLOSE, kernel, iterations = 1)
 
-# Find contours and filter using threshold area 
-cnts = cv.findContours(close, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-cnts = cnts[0] if len(cnts) == 2 else cnts[1]  
+    # Find contours and filter using threshold area 
+    # cnts = cv.findContours(close, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+    # cnts = cnts[0] if len(cnts) == 2 else cnts[1]  
 
-# Printing the total area of the image 
-print(loaded_image.size)
+    # Printing the total area of the image 
+    # print(loaded_image.size)
 
-min_area = 5_000
-max_area = 10_000  
-image_number = 0
+    # min_area = 5_000
+    # max_area = 10_000  
+    # image_number = 0
 
-for c in cnts: 
-    area = cv.contourArea(c)
-    print(area)
-    if area > min_area and area < max_area: 
-        x, y, w, h = cv.boundingRect(c)
-        ROI = loaded_image[y:y+h, x:x+w]
-        cv.imwrite("ROI_{}.png".format(image_number), ROI)
-        cv.rectangle(loaded_image, (x, y), (x + w, y + h), (36, 255, 12), 2)
-        image_number += 1
+    # for c in cnts: 
+        # area = cv.contourArea(c)
+        # print(area)
+        # if area > min_area and area < max_area: 
+            # x, y, w, h = cv.boundingRect(c)
+            # ROI = loaded_image[y:y+h, x:x+w]
+            # cv.imwrite("ROI_{}.png".format(image_number), ROI)
+            # cv.rectangle(loaded_image, (x, y), (x + w, y + h), (36, 255, 12), 2)
+            # image_number += 1
+            # break 
 
-cv.imshow('gray', gray)
-cv.imshow('blur', blur)
-cv.imshow('sharpen', sharpen)
-cv.imshow('close', close)
-cv.imshow('thresh', thresh)
-cv.imshow('image', loaded_image)
+    # cv.imshow('gray', gray)
+    # cv.imshow('blur', blur)
+    # cv.imshow('sharpen', sharpen)
+    # cv.imshow('close', close)
+    # cv.imshow('thresh', thresh)
+    # cv.imshow('image', loaded_image)
 
 
-k = cv.waitKey(0)
-if k == 27:
-    cv.destroyAllWindows() 
-    print("The program has been terminated!")
+    k = cv.waitKey(0)
+    if k == 27:
+        cv.destroyAllWindows() 
+        print("The program has been terminated!")
