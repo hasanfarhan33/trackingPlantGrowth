@@ -122,19 +122,25 @@ def get_sample_name(image_path):
 
   
 def generate_excel_file(folder_path, file_name):
+    # Actual dimensions of the paper in mm 
+    paper_width_mm, paper_height_mm = 17, 18 
+    paper_area_mm = paper_width_mm * paper_height_mm
+    
+    # Variables required to create the excel file 
     excel_file_name = file_name + ".xlsx"
     workbook = xlsxwriter.Workbook(excel_file_name)
     worksheet = workbook.add_worksheet()
     
     # Creating the headers
-    header_data = ["FILE NAME", "SAMPLE NAME", "DATE", "TIME", "WHITE PIXEL COUNT", "TOTAL PIXELS", "WHITE PIXEL PERCENTAGE"]
+    header_data = ["FILE NAME", "SAMPLE NAME", "DATE", "TIME", "PAPER AREA (PX)", "SINGLE MM^2 PIXELS", "WHITE PIXEL COUNT", 
+                   "TOTAL PIXELS", "WHITE PIXEL PERCENTAGE", "WHITE PIXELS MM"]
     header_format = workbook.add_format({'bold': True,
                                          'bottom': 2,})
     # Writing the headers of the excel file
     for col_num, data in enumerate(header_data): 
         worksheet.write(0, col_num, data, header_format)
         
-    
+    # Processing the image file 
     image_files = glob(os.path.join(folder_path, "*.jpg"))
     row = 1
     col = 0
@@ -148,12 +154,20 @@ def generate_excel_file(folder_path, file_name):
         img_date = img_date_time[0]
         img_time = img_date_time[-1]
         
+        # Getting paper area in pixels 
+        paper_area_px = get_paper_area_px(cur_img_path)
+        
+        # How many pixels is 1 mm^2? 
+        single_mm_px = round((paper_area_px / paper_area_mm), 2)
+        
         # Getting data from image 
         white_pixels, total_pixels = getting_pixel_counts(cur_img_path, show_images = False)
         white_percent = (white_pixels / total_pixels) * 100 
         white_percent_rounded = round(white_percent, 2)
         
-        row_data.extend([file_name, sample_name, img_date, img_time, white_pixels, total_pixels, f"{white_percent_rounded}%"])
+        white_pixels_area_mm = round((white_pixels / single_mm_px), 2)
+        
+        row_data.extend([file_name, sample_name, img_date, img_time, paper_area_px, single_mm_px, white_pixels, total_pixels, f"{white_percent_rounded}%", white_pixels_area_mm])
         
         worksheet.write_row(row, 0, tuple(row_data))
         row += 1
@@ -163,7 +177,55 @@ def generate_excel_file(folder_path, file_name):
     print("THE EXCEL FILE HAS BEEN GENERATED")
 
 
-def get_squares_from_all_photos(folder_path, file_name = None):
+def get_paper_area_px(img_path, save_squares = False): 
+    squares_folder = "extracted_squares"  
+    img = cv.imread(img_path)
+    if img is None: 
+        sys.exit("No image found")
+    
+    resized_img = ResizeWithAspectRatio(img, 500)
+    gray = cv.cvtColor(resized_img, cv.COLOR_BGR2GRAY)
+    blur = cv.medianBlur(gray, 9)
+    sharpen_kernel = np.array([[-1,-1,-1],[-1,9,-1],[-1,-1,-1]])
+    sharpen = cv.filter2D(blur, -1, sharpen_kernel)
+    
+    thresh = cv.threshold(sharpen, 160, 255, cv.THRESH_OTSU)[1] 
+    kernel = cv.getStructuringElement(cv.MORPH_RECT, (3, 3))
+    close = cv.morphologyEx(thresh, cv.MORPH_CLOSE, kernel, iterations=1)
+    
+    # Find contours and filter using threshold area 
+    cnts = cv.findContours(close, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+    cnts = cnts[0] if len(cnts) == 2 else cnts[1]
+    
+    min_area = 7_000 
+    max_area = 9_000 
+    
+    for c in cnts: 
+        area = cv.contourArea(c) 
+        # print(area)
+        if area > min_area and area < max_area: 
+            x, y, w, h = cv.boundingRect(c)
+            ROI = resized_img[y:y+h, x:x+w] 
+        
+            # Creating a folder and saving all the extracted rectangles there 
+            if not os.path.exists(squares_folder):
+                os.makedirs(squares_folder)
+            else: 
+                if save_squares: 
+                    square_file_name = Path(img_path).stem
+                    cv.imwrite(os.path.join(squares_folder, "{}_square.png".format(square_file_name)), ROI)
+                else: 
+                    break 
+                    # Get the dimensions of the Detected Square 
+                    # print("Area of the square has been extracted: ", area)
+                    # return area       
+                    # cv.imshow("Extracted Image with Area", ROI) 
+            break 
+    
+    return area 
+    
+
+def get_extracted_square_area(folder_path, file_name = None, save_squares = False):
     image_files = glob(os.path.join(folder_path, "*.jpg"))
     squares_folder = "extracted_squares"
     for cur_img in image_files: 
@@ -187,12 +249,13 @@ def get_squares_from_all_photos(folder_path, file_name = None):
         cnts = cv.findContours(close, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
         cnts = cnts[0] if len(cnts) == 2 else cnts[1]  
         
-        min_area = 5_000 
-        max_area = 10_000 
+        min_area = 7_000 
+        max_area = 9_000 
         
+        # Getting the area of the square
         for c in cnts: 
             area = cv.contourArea(c)
-            # print(area)
+            print(area)
             if area > min_area and area < max_area: 
                 x, y, w, h = cv.boundingRect(c)
                 ROI = resized_img[y:y+h, x:x+w] 
@@ -201,22 +264,30 @@ def get_squares_from_all_photos(folder_path, file_name = None):
                 if not os.path.exists(squares_folder):
                     os.makedirs(squares_folder)
                 else: 
-                    square_file_name = Path(cur_file).stem
-                    cv.imwrite(os.path.join(squares_folder, "{}_square.png".format(square_file_name)), ROI)
-                break 
-                    
+                    if save_squares: 
+                        square_file_name = Path(cur_file).stem
+                        cv.imwrite(os.path.join(squares_folder, "{}_square.png".format(square_file_name)), ROI)
+                    else: 
+                        # Get the dimensions of the Detected Square 
+                        print("Area of the square has been extracted: ", area)      
+                        # cv.imshow("Extracted Image with Area", ROI) 
+                break         
         # break 
+        return area
 
 
 if __name__ == "__main__":
     # Folder where all the plant images are 
     img_folder = r"plant_images/cropped_images"
     
-    get_squares_from_all_photos(img_folder)
+    img_path = r"plant_images/cropped_images/UGAN01_1.jpg"
     
-    # start_time = time.time()
-    # generate_excel_file(img_folder, "generate_file")
-    # print("TIME TAKEN TO GENERATE EXCEL FILE:", int(time.time() - start_time), "seconds")
+    # get_extracted_square_area(img_folder, save_squares=False)
+    # get_paper_area_px(img_path=img_path)
+    
+    start_time = time.time()
+    generate_excel_file(img_folder, "generate_file")
+    print("TIME TAKEN TO GENERATE EXCEL FILE:", int(time.time() - start_time), "seconds")
 
     # Getting pixel counts 
     # white_pixel_count, total_pixels = getting_pixel_counts(img_path = r"plant_images/image.jpg", show_images = True)
